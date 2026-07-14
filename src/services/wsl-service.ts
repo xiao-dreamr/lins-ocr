@@ -1,15 +1,18 @@
-import { spawn } from 'child_process';
+import { spawn, ChildProcess } from 'child_process';
 import { requestUrl } from 'obsidian';
 import type { LinsOCRSettings } from '../settings';
 
 /**
  * WSL 服务生命周期管理器
- * 负责 PaddleOCR-VL HTTP 服务的健康检查、启动、停止和空闲关闭。
  *
- * 使用 spawn（而非 exec）来避免 Windows cmd.exe 对引号的二次解析，
- * 这是跨 WSL 边界传递命令时最常见的出错原因。
+ * 关键设计决策：paddlex 在前台运行（不用 & / nohup），
+ * 由 spawn 返回的 ChildProcess 保持 WSL 会话存活。
+ *
+ * 原因：WSL2 在初始 bash 进程退出后会终止整个 VM，
+ * 即使用 nohup + disown，后台进程也会被 WSL2 杀掉。
  */
 export class WslServiceManager {
+    private serviceProcess: ChildProcess | null = null;
     private shutdownTimer: ReturnType<typeof setTimeout> | null = null;
     private settings: LinsOCRSettings;
 
@@ -44,67 +47,75 @@ export class WslServiceManager {
     /**
      * 启动 WSL 中的 PaddleOCR-VL 服务
      *
-     * 使用 spawn + 参数数组，完全避开 shell 引号解析。
+     * paddlex 在前台运行（无 &），spawn 进程保持存活以确保
+     * WSL2 VM 不会在启动后立即终止。
      */
     startService(): Promise<boolean> {
+        // 如果已有进程在运行，先关闭
+        if (this.serviceProcess) {
+            this.killServiceProcess();
+        }
+
         return new Promise((resolve) => {
             const condaRoot = this.getCondaRoot(this.settings.condaEnvPath);
             const envName = this.settings.condaEnvPath.split('/').pop() ?? 'paddle';
             const logFile = '/tmp/linsocr-service.log';
             const port = this.settings.servicePort;
 
-            // 时间戳标记 + conda 激活 + 后台启动 paddlex
-            // 注意：重定向直接跟在 nohup 命令上（不在 subshell 中），
-            // 用 env 设置环境变量，最后 disown 防止 bash 退出时杀后台进程
+            // 前台运行（无 &），bash 会阻塞直到 paddlex 退出
+            // wsl.exe 进程存活 = WSL2 VM 存活 = paddlex 存活
             const innerCmd =
                 `echo "=== LinsOCR service start $(date) ===" > ${logFile} && ` +
                 `source ${condaRoot}/etc/profile.d/conda.sh && ` +
                 `conda activate ${envName} && ` +
-                `nohup env FLAGS_allocator_strategy=naive_best_fit paddlex --serve --port ${port} >> ${logFile} 2>&1 & ` +
-                `disown`;
+                `env FLAGS_allocator_strategy=naive_best_fit paddlex --serve --port ${port} >> ${logFile} 2>&1`;
 
-            console.log('[LinsOCR] Starting WSL service...');
+            console.log('[LinsOCR] Starting WSL service (foreground mode)...');
             console.log('[LinsOCR] innerCmd:', innerCmd);
 
             const child = spawn('wsl', [
                 '-d', this.settings.wslDistro,
                 '--', 'bash', '-c', innerCmd,
-            ]);
+            ], {
+                // 不设 detached，让子进程随父进程生命周期
+                stdio: ['ignore', 'pipe', 'pipe'],
+            });
 
-            let stderr = '';
-
+            // 必须消费 stdout/stderr，否则缓冲区满后子进程会挂起
+            child.stdout?.on('data', () => { /* 输出已重定向到日志文件 */ });
             child.stderr?.on('data', (data: Buffer) => {
-                stderr += data.toString();
+                console.error('[LinsOCR] service stderr:', data.toString().trim());
             });
 
             child.on('error', (err) => {
                 console.error('[LinsOCR] spawn error:', err.message);
+                this.serviceProcess = null;
                 resolve(false);
             });
 
             child.on('close', (code) => {
-                if (stderr) {
-                    console.error('[LinsOCR] bash stderr:', stderr.trim());
-                }
-                console.log('[LinsOCR] bash exited with code:', code);
+                console.log('[LinsOCR] service process exited with code:', code);
+                this.serviceProcess = null;
             });
 
+            this.serviceProcess = child;
+
+            // 给 conda 初始化 + 模型加载留时间
             this.sleep(2000).then(() => resolve(true));
         });
     }
 
     /**
-     * 停止 WSL 中的服务（通过端口杀进程）
+     * 停止 WSL 中的服务
      */
     async stopService(): Promise<void> {
+        this.killServiceProcess();
+        // 兜底：通过端口杀（处理 serviceProcess 为 null 的边界情况）
         try {
             const port = this.settings.servicePort;
-            const killCmd = `fuser -k ${port}/tcp 2>/dev/null || true`;
-
-            console.log('[LinsOCR] Stopping service on port', port);
-            await this.spawnWsl(killCmd);
-        } catch (error) {
-            console.error('[LinsOCR] Error stopping service:', error);
+            await this.spawnWsl(`fuser -k ${port}/tcp 2>/dev/null || true`);
+        } catch {
+            // 忽略
         }
     }
 
@@ -121,7 +132,7 @@ export class WslServiceManager {
         console.log('[LinsOCR] Service not responding, starting...');
         await this.startService();
 
-        // 轮询等待服务就绪（最多 120 秒，首次加载模型较慢）
+        // 轮询等待服务就绪（最多 120 秒）
         const maxAttempts = 60;
         const intervalMs = 2000;
 
@@ -173,8 +184,37 @@ export class WslServiceManager {
     // ---- 私有辅助 ----
 
     /**
+     * 杀死服务进程（SIGTERM → 超时后 SIGKILL）
+     */
+    private killServiceProcess(): void {
+        if (!this.serviceProcess) return;
+
+        const child = this.serviceProcess;
+
+        // 先尝试优雅终止
+        const killed = child.kill('SIGTERM');
+        if (!killed) {
+            // 已经退出
+            this.serviceProcess = null;
+            return;
+        }
+
+        // 5 秒后如果还没退出，强制杀
+        const forceKill = setTimeout(() => {
+            if (child.exitCode === null && child.signalCode === null) {
+                console.log('[LinsOCR] Force killing service process');
+                child.kill('SIGKILL');
+            }
+        }, 5000);
+
+        child.on('close', () => {
+            clearTimeout(forceKill);
+            this.serviceProcess = null;
+        });
+    }
+
+    /**
      * 从 conda 环境路径推导 conda 根目录
-     * /home/lin/miniconda3/envs/paddle → /home/lin/miniconda3
      */
     private getCondaRoot(envPath: string): string {
         const parts = envPath.split('/');
