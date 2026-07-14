@@ -1,13 +1,15 @@
-import { exec } from 'child_process';
+import { spawn } from 'child_process';
 import { requestUrl } from 'obsidian';
 import type { LinsOCRSettings } from '../settings';
 
 /**
  * WSL 服务生命周期管理器
  * 负责 PaddleOCR-VL HTTP 服务的健康检查、启动、停止和空闲关闭。
+ *
+ * 使用 spawn（而非 exec）来避免 Windows cmd.exe 对引号的二次解析，
+ * 这是跨 WSL 边界传递命令时最常见的出错原因。
  */
 export class WslServiceManager {
-    private servicePid: string | null = null;
     private shutdownTimer: ReturnType<typeof setTimeout> | null = null;
     private settings: LinsOCRSettings;
 
@@ -41,56 +43,58 @@ export class WslServiceManager {
 
     /**
      * 启动 WSL 中的 PaddleOCR-VL 服务
+     *
+     * 使用 spawn + 参数数组，完全避开 shell 引号解析。
      */
-    async startService(): Promise<boolean> {
-        try {
+    startService(): Promise<boolean> {
+        return new Promise((resolve) => {
             const condaRoot = this.getCondaRoot(this.settings.condaEnvPath);
             const envName = this.settings.condaEnvPath.split('/').pop() ?? 'paddle';
 
-            // 构建启动命令：conda 激活环境 + 设置环境变量 + 后台运行
-            const innerCmd = [
-                `source "${condaRoot}/etc/profile.d/conda.sh"`,
-                `conda activate "${envName}"`,
-                `FLAGS_allocator_strategy=naive_best_fit nohup paddlex --serve --port ${this.settings.servicePort} > /dev/null 2>&1 &`,
-                // WSL 中 echo $! 拿到的 pid 是 wsl 内的进程 pid
-            ].join(' && ');
+            // bash -c 的内部命令：注意不使用双引号包裹路径（Linux 路径不含空格），
+            // 避免嵌套引号问题
+            const innerCmd =
+                `source ${condaRoot}/etc/profile.d/conda.sh && ` +
+                `conda activate ${envName} && ` +
+                `FLAGS_allocator_strategy=naive_best_fit nohup paddlex --serve --port ${this.settings.servicePort} > /dev/null 2>&1 &`;
 
-            const wslCmd = `wsl -d ${this.settings.wslDistro} -- bash -c '${innerCmd}'`;
+            console.log('[LinsOCR] Starting WSL service...');
+            console.log('[LinsOCR] innerCmd:', innerCmd);
 
-            console.log('[LinsOCR] Starting WSL service:', wslCmd);
-
-            // 立即执行启动命令，不等待进程退出
-            exec(wslCmd, (error, stdout) => {
-                if (error) {
-                    console.error('[LinsOCR] Failed to start service:', error.message);
-                    return;
-                }
-                const pid = stdout.trim();
-                if (pid) {
-                    this.servicePid = pid;
-                    console.log('[LinsOCR] Service started with PID:', pid);
-                }
+            // spawn 以数组传递参数，无 shell 介入，无引号问题
+            const child = spawn('wsl', [
+                '-d', this.settings.wslDistro,
+                '--', 'bash', '-c', innerCmd,
+            ], {
+                stdio: 'ignore',  // 不关心 stdout/stderr，后台服务已重定向到 /dev/null
+                detached: true,   // 脱离父进程，Obsidian 关闭时 WSL 服务不受影响
             });
 
-            // 等待一小段时间让进程启动
-            await this.sleep(2000);
-            return true;
-        } catch (error) {
-            console.error('[LinsOCR] Error starting service:', error);
-            return false;
-        }
+            child.on('error', (err) => {
+                console.error('[LinsOCR] spawn error:', err.message);
+                resolve(false);
+            });
+
+            child.on('close', (code) => {
+                // bash -c 后台启动后立即退出，code 通常为 0
+                console.log('[LinsOCR] spawn closed with code:', code);
+            });
+
+            // 不等待进程结束，立即返回让调用方轮询健康检查
+            this.sleep(2000).then(() => resolve(true));
+        });
     }
 
     /**
-     * 停止 WSL 中的服务
+     * 停止 WSL 中的服务（通过端口杀进程）
      */
     async stopService(): Promise<void> {
         try {
-            // 优先通过端口杀进程
-            const killCmd = `wsl -d ${this.settings.wslDistro} -- bash -c 'fuser -k ${this.settings.servicePort}/tcp 2>/dev/null || true'`;
-            console.log('[LinsOCR] Stopping service via port:', killCmd);
-            await this.execWsl(killCmd);
-            this.servicePid = null;
+            const port = this.settings.servicePort;
+            const killCmd = `fuser -k ${port}/tcp 2>/dev/null || true`;
+
+            console.log('[LinsOCR] Stopping service on port', port);
+            await this.spawnWsl(killCmd);
         } catch (error) {
             console.error('[LinsOCR] Error stopping service:', error);
         }
@@ -100,7 +104,6 @@ export class WslServiceManager {
      * 确保服务正在运行：先健康检查，失败则启动并轮询等待就绪
      */
     async ensureServiceRunning(): Promise<boolean> {
-        // 先尝试健康检查
         const healthy = await this.checkHealth();
         if (healthy) {
             console.log('[LinsOCR] Service is already running');
@@ -162,26 +165,46 @@ export class WslServiceManager {
 
     /**
      * 从 conda 环境路径推导 conda 根目录
-     * 例如 /home/lin/miniconda3/envs/paddle → /home/lin/miniconda3
+     * /home/lin/miniconda3/envs/paddle → /home/lin/miniconda3
      */
     private getCondaRoot(envPath: string): string {
         const parts = envPath.split('/');
-        // 去掉最后两级：envs/<name>
         if (parts.length >= 2 && parts[parts.length - 2] === 'envs') {
             return parts.slice(0, -2).join('/');
         }
-        // 回退：如果无法推导，假设 miniconda3 模式
         return envPath.replace(/\/envs\/[^/]+$/, '');
     }
 
-    private execWsl(command: string): Promise<string> {
+    /**
+     * 通过 spawn 在 WSL 中执行一条简单命令
+     */
+    private spawnWsl(command: string): Promise<string> {
         return new Promise((resolve, reject) => {
-            exec(command, (error, stdout, stderr) => {
-                if (error) {
-                    reject(new Error(`WSL exec failed: ${error.message}. stderr: ${stderr}`));
-                    return;
+            const child = spawn('wsl', [
+                '-d', this.settings.wslDistro,
+                '--', 'bash', '-c', command,
+            ]);
+
+            let stdout = '';
+            let stderr = '';
+
+            child.stdout?.on('data', (data: Buffer) => {
+                stdout += data.toString();
+            });
+            child.stderr?.on('data', (data: Buffer) => {
+                stderr += data.toString();
+            });
+
+            child.on('error', (err) => {
+                reject(new Error(`spawn failed: ${err.message}`));
+            });
+
+            child.on('close', (code) => {
+                if (code === 0) {
+                    resolve(stdout.trim());
+                } else {
+                    reject(new Error(`WSL command exited with code ${code}. stderr: ${stderr}`));
                 }
-                resolve(stdout.trim());
             });
         });
     }
