@@ -1,0 +1,11 @@
+{
+	"id": "lins-ocr",
+	"name": "LinsOCR",
+	"version": "1.0.0",
+	"minAppVersion": "0.15.0",
+	"description": "调用本地部署的 PaddleOCR-VL 模型（基于 WSL2），将手写笔记图片/PDF 一键转为 Markdown。",
+	"author": "Lin",
+	"authorUrl": "https://obsidian.md",
+	"fundingUrl": "https://obsidian.md/pricing",
+	"isDesktopOnly": true
+}
