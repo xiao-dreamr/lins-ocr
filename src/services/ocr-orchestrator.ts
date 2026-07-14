@@ -7,6 +7,19 @@ import { ImageUtils } from '../utils/image-utils';
 import { FileUtils } from '../utils/file-utils';
 
 /**
+ * 修整 PaddleOCR-VL 输出中的行内数学公式空格
+ * "$ 1+1=2 $" → "$1+1=2$"
+ * 不影响 $$...$$（块级公式）和 $100（货币）
+ */
+function fixInlineMathSpaces(text: string): string {
+    // 匹配: 单个 $ (前面不是 $)，一个或多个空格，内容，一个或多个空格，单个 $ (后面不是 $)
+    return text.replace(
+        /(?<!\$)\$[ ]+([^$\n]+?)[ ]+\$(?!\$)/g,
+        (_full: string, content: string) => `$${content.trim()}$`
+    );
+}
+
+/**
  * OCR 流程编排器
  * 协调 WSL 服务管理、API 调用、文件处理，完成完整的 OCR 工作流。
  */
@@ -130,6 +143,8 @@ export class OcrOrchestrator {
                     }
                 }
 
+                // 后处理：修正行内数学公式中的多余空格
+                pageText = fixInlineMathSpaces(pageText);
                 pageMarkdowns.push(pageText);
             }
 

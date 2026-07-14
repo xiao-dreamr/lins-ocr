@@ -69,6 +69,7 @@ export class FileUtils {
 
     /**
      * 创建 Markdown 文件，自动处理同名冲突
+     * 使用 createBinary + UTF-8 BOM 确保跨软件兼容（防止非 Obsidian 软件打开乱码）
      */
     static async createMarkdownFile(
         vault: Vault,
@@ -86,7 +87,15 @@ export class FileUtils {
             counter++;
         }
 
-        return vault.create(finalPath, content);
+        // 以 UTF-8 + BOM 写入，确保 Windows 记事本等软件正确识别中文
+        const encoder = new TextEncoder();
+        const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
+        const contentBytes = encoder.encode(content);
+        const buffer = new Uint8Array(bom.length + contentBytes.length);
+        buffer.set(bom, 0);
+        buffer.set(contentBytes, bom.length);
+
+        return vault.createBinary(finalPath, buffer.buffer);
     }
 
     /**
