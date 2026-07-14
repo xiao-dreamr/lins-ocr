@@ -43,7 +43,7 @@ export class OcrOrchestrator {
             const running = await this.wslService.ensureServiceRunning();
             if (!running) {
                 notice.hide();
-                new Notice('❌ 无法启动 PaddleOCR-VL 服务。请检查 WSL 是否运行以及设置是否正确。');
+                new Notice('❌ 无法启动 PaddleOCR-VL 服务（超时 120s）。请在 WSL 中运行 cat /tmp/linsocr-service.log 查看错误详情。');
                 return;
             }
 

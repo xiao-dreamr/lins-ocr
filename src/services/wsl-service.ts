@@ -51,12 +51,15 @@ export class WslServiceManager {
             const condaRoot = this.getCondaRoot(this.settings.condaEnvPath);
             const envName = this.settings.condaEnvPath.split('/').pop() ?? 'paddle';
 
+            // 日志文件用于排查启动问题
+            const logFile = '/tmp/linsocr-service.log';
+
             // bash -c 的内部命令：注意不使用双引号包裹路径（Linux 路径不含空格），
-            // 避免嵌套引号问题
+            // 避免嵌套引号问题。输出重定向到日志文件而非 /dev/null，方便排查
             const innerCmd =
                 `source ${condaRoot}/etc/profile.d/conda.sh && ` +
                 `conda activate ${envName} && ` +
-                `FLAGS_allocator_strategy=naive_best_fit nohup paddlex --serve --port ${this.settings.servicePort} > /dev/null 2>&1 &`;
+                `FLAGS_allocator_strategy=naive_best_fit nohup paddlex --serve --port ${this.settings.servicePort} > ${logFile} 2>&1 &`;
 
             console.log('[LinsOCR] Starting WSL service...');
             console.log('[LinsOCR] innerCmd:', innerCmd);
@@ -113,8 +116,8 @@ export class WslServiceManager {
         console.log('[LinsOCR] Service not responding, starting...');
         await this.startService();
 
-        // 轮询等待服务就绪（最多 30 秒）
-        const maxAttempts = 15;
+        // 轮询等待服务就绪（最多 120 秒，首次加载模型较慢）
+        const maxAttempts = 60;
         const intervalMs = 2000;
 
         for (let i = 0; i < maxAttempts; i++) {
@@ -126,7 +129,8 @@ export class WslServiceManager {
             }
         }
 
-        console.error('[LinsOCR] Service failed to become ready within timeout');
+        console.error('[LinsOCR] Service failed to become ready within 120s');
+        console.error('[LinsOCR] Check WSL log: cat /tmp/linsocr-service.log');
         return false;
     }
 

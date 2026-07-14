@@ -95,7 +95,7 @@ npm run dev     # watch 模式，保存后自动编译
 | 设置项 | 默认值 | 说明 |
 |--------|--------|------|
 | WSL 发行版名称 | `Arch` | 安装 PaddleOCR 的发行版名称（`wsl -l` 查看） |
-| Conda 环境路径 | `/home/lin/miniconda3/envs/paddle` | conda 环境的绝对路径 |
+| Conda 环境路径 | `/home/username/miniconda3/envs/paddle` | conda 环境的绝对路径 |
 | 服务端口 | `8080` | PaddleOCR-VL 服务端口 |
 
 ### 服务端点
