@@ -50,27 +50,29 @@ export class WslServiceManager {
         return new Promise((resolve) => {
             const condaRoot = this.getCondaRoot(this.settings.condaEnvPath);
             const envName = this.settings.condaEnvPath.split('/').pop() ?? 'paddle';
-
-            // 日志文件用于排查启动问题
             const logFile = '/tmp/linsocr-service.log';
 
-            // bash -c 的内部命令：注意不使用双引号包裹路径（Linux 路径不含空格），
-            // 避免嵌套引号问题。输出重定向到日志文件而非 /dev/null，方便排查
+            // 整个命令包在 subshell 中，所有输出（含 source/conda 错误）重定向到日志文件
+            // 这样无论哪个环节失败，都能在日志文件中看到错误
             const innerCmd =
-                `source ${condaRoot}/etc/profile.d/conda.sh && ` +
+                `( source ${condaRoot}/etc/profile.d/conda.sh && ` +
                 `conda activate ${envName} && ` +
-                `FLAGS_allocator_strategy=naive_best_fit nohup paddlex --serve --port ${this.settings.servicePort} > ${logFile} 2>&1 &`;
+                `FLAGS_allocator_strategy=naive_best_fit nohup paddlex --serve --port ${this.settings.servicePort} & ) ` +
+                `>> ${logFile} 2>&1`;
 
             console.log('[LinsOCR] Starting WSL service...');
             console.log('[LinsOCR] innerCmd:', innerCmd);
 
-            // spawn 以数组传递参数，无 shell 介入，无引号问题
+            // 捕获 bash 的 stderr (wsl.exe 层面的错误也会出现在这里)
             const child = spawn('wsl', [
                 '-d', this.settings.wslDistro,
                 '--', 'bash', '-c', innerCmd,
-            ], {
-                stdio: 'ignore',  // 不关心 stdout/stderr，后台服务已重定向到 /dev/null
-                detached: true,   // 脱离父进程，Obsidian 关闭时 WSL 服务不受影响
+            ]);
+
+            let stderr = '';
+
+            child.stderr?.on('data', (data: Buffer) => {
+                stderr += data.toString();
             });
 
             child.on('error', (err) => {
@@ -79,8 +81,10 @@ export class WslServiceManager {
             });
 
             child.on('close', (code) => {
-                // bash -c 后台启动后立即退出，code 通常为 0
-                console.log('[LinsOCR] spawn closed with code:', code);
+                if (stderr) {
+                    console.error('[LinsOCR] bash stderr:', stderr);
+                }
+                console.log('[LinsOCR] bash exited with code:', code);
             });
 
             // 不等待进程结束，立即返回让调用方轮询健康检查
