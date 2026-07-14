@@ -1,4 +1,4 @@
-import { Editor, MarkdownView, Plugin } from 'obsidian';
+import { Plugin } from 'obsidian';
 import {
     LinsOCRSettings,
     DEFAULT_SETTINGS,
@@ -32,21 +32,18 @@ export default class LinsOCRPlugin extends Plugin {
         // 注册设置标签页
         this.addSettingTab(new LinsOCRSettingTab(this.app, this));
 
-        // 注册命令
+        // 使用 callback（而非 editorCallback），
+        // 使命令在查看图片/PDF 等非 Markdown 视图时也可用
         this.addCommand({
             id: 'ocr-picture',
             name: 'OCR picture',
-            editorCallback: (editor: Editor, view: MarkdownView) => {
-                ocrPictureCommand(this, editor, view);
-            },
+            callback: () => ocrPictureCommand(this),
         });
 
         this.addCommand({
             id: 'ocr-pdffile',
             name: 'OCR PDF file',
-            editorCallback: (editor: Editor, view: MarkdownView) => {
-                ocrPdfFileCommand(this, editor, view);
-            },
+            callback: () => ocrPdfFileCommand(this),
         });
 
         console.log('[LinsOCR] Plugin loaded');
