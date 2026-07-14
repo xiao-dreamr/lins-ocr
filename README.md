@@ -2,6 +2,10 @@
 
 调用本地部署的 PaddleOCR-VL 模型（基于 WSL2），一键将手写笔记图片 / PDF 转为 Markdown 的 Obsidian 插件。
 
+也算是Vibe Coding的练手项目，共花费3.70¥，模型为deepseek-v4-pro，使用CC Switch接入Claude Code。
+
+突然感受到古法编程的羸弱了（）
+
 > An Obsidian plugin that calls a locally-deployed PaddleOCR-VL model (via WSL2) to convert handwritten notes (images/PDFs) into Markdown with a single click.
 
 ## 功能
