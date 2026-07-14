@@ -5,6 +5,7 @@ export interface LinsOCRSettings {
     // WSL 配置
     wslDistro: string;
     condaEnvPath: string;
+    pipelineName: string;
     servicePort: number;
 
     // 服务端点
@@ -24,6 +25,7 @@ export interface LinsOCRSettings {
 export const DEFAULT_SETTINGS: LinsOCRSettings = {
     wslDistro: 'Arch',
     condaEnvPath: '/home/lin/miniconda3/envs/paddle',
+    pipelineName: 'PaddleOCR-VL',
     servicePort: 8080,
     healthCheckUrl: 'http://127.0.0.1:8080/health',
     layoutParsingUrl: 'http://127.0.0.1:8080/layout-parsing',
@@ -87,6 +89,17 @@ export class LinsOCRSettingTab extends PluginSettingTab {
                     await this.plugin.saveSettings();
                 }));
 
+
+        new Setting(containerEl)
+            .setName('管线名称')
+            .setDesc('PaddleOCR-VL 管线名称，可选: PaddleOCR-VL, PaddleOCR-VL-1.5, PaddleOCR-VL-1.6 等')
+            .addText(text => text
+                .setPlaceholder('PaddleOCR-VL')
+                .setValue(this.plugin.settings.pipelineName)
+                .onChange(async (value) => {
+                    this.plugin.settings.pipelineName = value;
+                    await this.plugin.saveSettings();
+                }));
         new Setting(containerEl)
             .setName('服务端口')
             .setDesc('PaddleOCR-VL HTTP 服务的监听端口')

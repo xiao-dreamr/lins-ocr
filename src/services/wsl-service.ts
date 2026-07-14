@@ -68,7 +68,7 @@ export class WslServiceManager {
                 `echo "=== LinsOCR service start $(date) ===" > ${logFile} && ` +
                 `source ${condaRoot}/etc/profile.d/conda.sh && ` +
                 `conda activate ${envName} && ` +
-                `env FLAGS_allocator_strategy=naive_best_fit paddlex --serve --port ${port} >> ${logFile} 2>&1`;
+                `env FLAGS_allocator_strategy=naive_best_fit paddlex --pipeline ${this.settings.pipelineName} --serve --port ${port} >> ${logFile} 2>&1`;
 
             console.log('[LinsOCR] Starting WSL service (foreground mode)...');
             console.log('[LinsOCR] innerCmd:', innerCmd);
