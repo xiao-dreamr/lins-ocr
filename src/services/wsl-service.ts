@@ -51,19 +51,21 @@ export class WslServiceManager {
             const condaRoot = this.getCondaRoot(this.settings.condaEnvPath);
             const envName = this.settings.condaEnvPath.split('/').pop() ?? 'paddle';
             const logFile = '/tmp/linsocr-service.log';
+            const port = this.settings.servicePort;
 
-            // 整个命令包在 subshell 中，所有输出（含 source/conda 错误）重定向到日志文件
-            // 这样无论哪个环节失败，都能在日志文件中看到错误
+            // 时间戳标记 + conda 激活 + 后台启动 paddlex
+            // 注意：重定向直接跟在 nohup 命令上（不在 subshell 中），
+            // 用 env 设置环境变量，最后 disown 防止 bash 退出时杀后台进程
             const innerCmd =
-                `( source ${condaRoot}/etc/profile.d/conda.sh && ` +
+                `echo "=== LinsOCR service start $(date) ===" > ${logFile} && ` +
+                `source ${condaRoot}/etc/profile.d/conda.sh && ` +
                 `conda activate ${envName} && ` +
-                `FLAGS_allocator_strategy=naive_best_fit nohup paddlex --serve --port ${this.settings.servicePort} & ) ` +
-                `>> ${logFile} 2>&1`;
+                `nohup env FLAGS_allocator_strategy=naive_best_fit paddlex --serve --port ${port} >> ${logFile} 2>&1 & ` +
+                `disown`;
 
             console.log('[LinsOCR] Starting WSL service...');
             console.log('[LinsOCR] innerCmd:', innerCmd);
 
-            // 捕获 bash 的 stderr (wsl.exe 层面的错误也会出现在这里)
             const child = spawn('wsl', [
                 '-d', this.settings.wslDistro,
                 '--', 'bash', '-c', innerCmd,
@@ -82,12 +84,11 @@ export class WslServiceManager {
 
             child.on('close', (code) => {
                 if (stderr) {
-                    console.error('[LinsOCR] bash stderr:', stderr);
+                    console.error('[LinsOCR] bash stderr:', stderr.trim());
                 }
                 console.log('[LinsOCR] bash exited with code:', code);
             });
 
-            // 不等待进程结束，立即返回让调用方轮询健康检查
             this.sleep(2000).then(() => resolve(true));
         });
     }
