@@ -2,6 +2,7 @@ import { requestUrl } from 'obsidian';
 import type { LinsOCRSettings } from '../settings';
 import { FileType, DEFAULT_LAYOUT_PARAMS } from '../types';
 import type { LayoutParsingResult } from '../types';
+import { ImageUtils } from '../utils/image-utils';
 
 /**
  * OCR API 调用服务
@@ -25,9 +26,12 @@ export class OcrApiService {
         base64File: string,
         fileType: FileType
     ): Promise<LayoutParsingResult[]> {
+        // 服务端要求纯 base64，需剥离 data URI 前缀
+        const rawBase64 = ImageUtils.stripDataUriPrefix(base64File);
+
         const payload = {
             ...DEFAULT_LAYOUT_PARAMS,
-            file: base64File,
+            file: rawBase64,
             fileType,
         };
 
