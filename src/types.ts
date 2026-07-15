@@ -42,7 +42,6 @@ export interface LayoutParsingRequest {
     useDocOrientationClassify: boolean;
     useDocUnwarping: boolean;
     promptLabel: string;
-    temperature: number;
     minPixels: number;
     maxPixels: number;
     maxNewTokens: number;
@@ -52,7 +51,6 @@ export interface LayoutParsingRequest {
     restructurePages: boolean;
     mergeTables: boolean;
     relevelTitles: boolean;
-    topP: number;
     showFormulaNumber: boolean;
     markdownIgnoreLabels: string[];
 }
@@ -71,6 +69,7 @@ export const SUPPORTED_IMAGE_EXTENSIONS = [
 export const SUPPORTED_PDF_EXTENSIONS = ['pdf'];
 
 // PaddleOCR-VL 默认参数
+// 注意：temperature 和 topP 本地模型不支持，发送会产生 UserWarning，已移除
 export const DEFAULT_LAYOUT_PARAMS: Omit<LayoutParsingRequest, 'file' | 'fileType'> = {
     useLayoutDetection: true,
     useChartRecognition: false,
@@ -79,7 +78,6 @@ export const DEFAULT_LAYOUT_PARAMS: Omit<LayoutParsingRequest, 'file' | 'fileTyp
     useDocOrientationClassify: false,
     useDocUnwarping: false,
     promptLabel: 'ocr',
-    temperature: 0.0,
     minPixels: 112896,
     maxPixels: 1003520,
     maxNewTokens: 4096,
@@ -89,7 +87,6 @@ export const DEFAULT_LAYOUT_PARAMS: Omit<LayoutParsingRequest, 'file' | 'fileTyp
     restructurePages: false,
     mergeTables: true,
     relevelTitles: true,
-    topP: 0.9,
     showFormulaNumber: false,
     markdownIgnoreLabels: ['header', 'footer', 'footnote'],
 };
