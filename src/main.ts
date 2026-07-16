@@ -1,4 +1,4 @@
-import { Plugin } from 'obsidian';
+import { Notice, Plugin } from 'obsidian';
 import {
     LinsOCRSettings,
     DEFAULT_SETTINGS,
@@ -44,6 +44,19 @@ export default class LinsOCRPlugin extends Plugin {
             id: 'ocr-pdffile',
             name: 'OCR PDF file',
             callback: () => ocrPdfFileCommand(this),
+        });
+
+        this.addCommand({
+            id: 'stop-ocr-service',
+            name: 'Stop OCR service',
+            callback: () => {
+                this.wslService.shutdown().then(() => {
+                    new Notice('OCR 服务已关闭，显存已释放');
+                }).catch((err) => {
+                    console.error('[LinsOCR] Shutdown error:', err);
+                    new Notice('OCR 服务关闭失败，请查看控制台');
+                });
+            },
         });
 
         console.log('[LinsOCR] Plugin loaded');
