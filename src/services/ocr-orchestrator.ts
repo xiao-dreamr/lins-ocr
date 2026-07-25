@@ -100,6 +100,7 @@ export class OcrOrchestrator {
                     allImages.set(id, data as string);
                 }
             }
+            console.log('[LinsOCR] Collected', allImages.size, 'images from layout results');
 
             const pageMarkdowns: string[] = [];
 
@@ -113,9 +114,9 @@ export class OcrOrchestrator {
                 // 处理图片：保存到仓库，替换引用
                 for (const [imageId, imageBase64] of allImages.entries()) {
                     try {
-                        // 确定扩展名
-                        const ext = ImageUtils.extFromImageId(imageId);
-                        const safeFilename = `${file.basename}_p${i}_${imageId}`;
+                        // 取 basename（imageId 可能带目录前缀如 imgs/xxx.jpg）
+                        const baseName = imageId.split('/').pop() ?? imageId;
+                        const safeFilename = `${file.basename}_p${i}_${baseName}`;
                         const imagePath = this.settings.attachmentsFolder
                             ? `${this.settings.attachmentsFolder}/${safeFilename}`
                             : safeFilename;
