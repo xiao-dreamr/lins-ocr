@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "target": "src/",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd /home/lin/LinsOCR/lins-ocr && npm run build"
+          }
+        ]
+      }
+    ]
+  }
+}
