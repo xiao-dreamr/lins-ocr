@@ -133,13 +133,33 @@ export class OcrOrchestrator {
                             imageBase64
                         );
 
-                        // 替换 markdown 中的图片引用
+                        // 替换文本中的图片引用（三种格式都要覆盖）
                         const escapedId = imageId.replace(
                             /[.*+?^${}()|[\]\\]/g,
                             '\\$&'
                         );
+
+                        // 1) Markdown 图片语法：![alt](*imageId)
                         pageText = pageText.replace(
-                            new RegExp(escapedId, 'g'),
+                            new RegExp(
+                                `!\\[([^\\]]*)\\]\\([^)]*${escapedId}\\)`,
+                                'g'
+                            ),
+                            `![$1](${imagePath})`
+                        );
+
+                        // 2) HTML img 标签：<img ... src="*imageId" ...>
+                        pageText = pageText.replace(
+                            new RegExp(
+                                `(<img[^>]*\\bsrc=")[^"]*${escapedId}(")`,
+                                'g'
+                            ),
+                            `$1${imagePath}$2`
+                        );
+
+                        // 3) 裸引用：残留的 imageId（含路径前缀如 imgs/）
+                        pageText = pageText.replace(
+                            new RegExp(`[^")\\s]*${escapedId}`, 'g'),
                             imagePath
                         );
                     } catch (imgErr) {
