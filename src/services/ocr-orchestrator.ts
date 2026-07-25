@@ -91,8 +91,16 @@ export class OcrOrchestrator {
                 fileType
             );
 
-            // 7. 处理结果
+            // 7. 从原始结果中收集所有图片（restructure 可能不返回 images）
             notice.setMessage('正在保存结果...');
+            const allImages = new Map<string, string>(); // imageId → base64
+            for (const result of layoutResults) {
+                const images = result.markdown?.images ?? {};
+                for (const [id, data] of Object.entries(images)) {
+                    allImages.set(id, data as string);
+                }
+            }
+
             const pageMarkdowns: string[] = [];
 
             for (let i = 0; i < restructuredResults.length; i++) {
@@ -103,8 +111,7 @@ export class OcrOrchestrator {
                 let pageText = markdown.text ?? '';
 
                 // 处理图片：保存到仓库，替换引用
-                const images = markdown.images ?? {};
-                for (const [imageId, imageBase64] of Object.entries(images)) {
+                for (const [imageId, imageBase64] of allImages.entries()) {
                     try {
                         // 确定扩展名
                         const ext = ImageUtils.extFromImageId(imageId);
