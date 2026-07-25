@@ -20,6 +20,10 @@ export interface LinsOCRSettings {
     // 行为配置
     idleTimeout: number;
     maxImageDimension: number;
+
+    // WebP 压缩
+    webpQuality: number;
+    pythonScriptPath: string;
 }
 
 export const DEFAULT_SETTINGS: LinsOCRSettings = {
@@ -34,6 +38,8 @@ export const DEFAULT_SETTINGS: LinsOCRSettings = {
     attachmentsFolder: 'attachments',
     idleTimeout: 120,
     maxImageDimension: 1280,
+    webpQuality: 85,
+    pythonScriptPath: '',
 };
 
 /**
@@ -208,6 +214,34 @@ export class LinsOCRSettingTab extends PluginSettingTab {
                         this.plugin.settings.maxImageDimension = dim;
                         await this.plugin.saveSettings();
                     }
+                }));
+
+        // ========== WebP 压缩配置 ==========
+        containerEl.createEl('h2', { text: 'WebP 压缩' });
+
+        new Setting(containerEl)
+            .setName('压缩质量')
+            .setDesc('WebP 压缩质量 (1-100)，设为 0 关闭压缩')
+            .addText(text => text
+                .setPlaceholder('85')
+                .setValue(String(this.plugin.settings.webpQuality))
+                .onChange(async (value) => {
+                    const q = parseInt(value, 10);
+                    if (!isNaN(q) && q >= 0 && q <= 100) {
+                        this.plugin.settings.webpQuality = q;
+                        await this.plugin.saveSettings();
+                    }
+                }));
+
+        new Setting(containerEl)
+            .setName('Python 压缩脚本路径')
+            .setDesc('WebP 压缩脚本在 WSL 中的绝对路径')
+            .addText(text => text
+                .setPlaceholder('/mnt/d/path/to/compress.py')
+                .setValue(this.plugin.settings.pythonScriptPath)
+                .onChange(async (value) => {
+                    this.plugin.settings.pythonScriptPath = value;
+                    await this.plugin.saveSettings();
                 }));
     }
 }

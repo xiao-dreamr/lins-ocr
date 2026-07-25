@@ -181,6 +181,13 @@ export class WslServiceManager {
         await this.stopService();
     }
 
+    /**
+     * 在 WSL 中执行任意命令并返回输出
+     */
+    async execWsl(command: string): Promise<string> {
+        return this.spawnWsl(command);
+    }
+
     // ---- 私有辅助 ----
 
     /**

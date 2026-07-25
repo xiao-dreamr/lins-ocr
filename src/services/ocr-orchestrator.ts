@@ -1,4 +1,4 @@
-import { Vault, Notice, TFile } from 'obsidian';
+import { FileSystemAdapter, Notice, TFile, Vault } from 'obsidian';
 import type { LinsOCRSettings } from '../settings';
 import { FileType } from '../types';
 import { WslServiceManager } from './wsl-service';
@@ -174,6 +174,50 @@ export class OcrOrchestrator {
                 // 后处理：修正行内数学公式中的多余空格
                 pageText = fixInlineMathSpaces(pageText);
                 pageMarkdowns.push(pageText);
+            }
+
+            // 8. WebP 压缩（如果已配置）
+            const q = this.settings.webpQuality;
+            const pyScript = this.settings.pythonScriptPath;
+            if (q > 0 && pyScript && allImages.size > 0) {
+                notice.setMessage('正在压缩图片为 WebP...');
+                try {
+                    // 获取仓库在 Windows 上的绝对路径并转为 WSL 路径
+                    const adapter = this.app.vault.adapter;
+                    let vaultBasePath = '';
+                    if (adapter instanceof FileSystemAdapter) {
+                        vaultBasePath = adapter.getBasePath();
+                    } else {
+                        // 回退：如果 adapter 不是 FileSystemAdapter
+                        console.warn('[LinsOCR] vault.adapter is not FileSystemAdapter, skipping webp');
+                    }
+
+                    if (vaultBasePath) {
+                        const wslBase = vaultBasePath
+                            .replace(/^([A-Z]):/, (_: string, d: string) =>
+                                `/mnt/${d.toLowerCase()}`
+                            )
+                            .replace(/\\/g, '/');
+                        const attachWslPath = this.settings.attachmentsFolder
+                            ? `${wslBase}/${this.settings.attachmentsFolder}`
+                            : wslBase;
+
+                        const cmd = `python3 '${pyScript}' '${attachWslPath}' -q ${q}`;
+                        console.log('[LinsOCR] Running webp compression:', cmd);
+                        const out = await this.wslService.execWsl(cmd);
+                        console.log('[LinsOCR] WebP compression output:', out);
+
+                        // 替换 markdown 中的图片扩展名为 .webp
+                        for (let i = 0; i < pageMarkdowns.length; i++) {
+                            pageMarkdowns[i] = pageMarkdowns[i].replace(
+                                /\.(jpg|jpeg|png|bmp|tiff|tif)(\b|["')}\s>])/gi,
+                                '.webp$2'
+                            );
+                        }
+                    }
+                } catch (err) {
+                    console.warn('[LinsOCR] WebP compression failed:', err);
+                }
             }
 
             if (pageMarkdowns.length === 0) {
