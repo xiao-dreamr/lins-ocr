@@ -179,20 +179,17 @@ export class OcrOrchestrator {
             // 8. WebP 压缩（如果已配置）
             const q = this.settings.webpQuality;
             const pyScript = this.settings.pythonScriptPath;
+            console.log(`[LinsOCR] WebP check: quality=${q}, script='${pyScript}', images=${allImages.size}`);
             if (q > 0 && pyScript && allImages.size > 0) {
                 notice.setMessage('正在压缩图片为 WebP...');
                 try {
                     // 获取仓库在 Windows 上的绝对路径并转为 WSL 路径
-                    const adapter = this.app.vault.adapter;
-                    let vaultBasePath = '';
-                    if (adapter instanceof FileSystemAdapter) {
-                        vaultBasePath = adapter.getBasePath();
-                    } else {
-                        // 回退：如果 adapter 不是 FileSystemAdapter
+                    const adapter = this.vault.adapter;
+                    const fsAdapter = adapter instanceof FileSystemAdapter ? adapter : null;
+                    if (!fsAdapter) {
                         console.warn('[LinsOCR] vault.adapter is not FileSystemAdapter, skipping webp');
-                    }
-
-                    if (vaultBasePath) {
+                    } else {
+                        const vaultBasePath = fsAdapter.getBasePath();
                         const wslBase = vaultBasePath
                             .replace(/^([A-Z]):/, (_: string, d: string) =>
                                 `/mnt/${d.toLowerCase()}`
