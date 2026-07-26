@@ -24,6 +24,7 @@ export interface LinsOCRSettings {
     // WebP 压缩
     webpQuality: number;
     pythonScriptPath: string;
+    cleanupOriginBackups: boolean;
 }
 
 export const DEFAULT_SETTINGS: LinsOCRSettings = {
@@ -40,6 +41,7 @@ export const DEFAULT_SETTINGS: LinsOCRSettings = {
     maxImageDimension: 1280,
     webpQuality: 85,
     pythonScriptPath: '',
+    cleanupOriginBackups: false,
 };
 
 /**
@@ -241,6 +243,16 @@ export class LinsOCRSettingTab extends PluginSettingTab {
                 .setValue(this.plugin.settings.pythonScriptPath)
                 .onChange(async (value) => {
                     this.plugin.settings.pythonScriptPath = value;
+                    await this.plugin.saveSettings();
+                }));
+
+        new Setting(containerEl)
+            .setName('压缩后删除原文件备份')
+            .setDesc('勾选后自动删除压缩产生的 *-origin.* 备份文件')
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.cleanupOriginBackups)
+                .onChange(async (value) => {
+                    this.plugin.settings.cleanupOriginBackups = value;
                     await this.plugin.saveSettings();
                 }));
     }

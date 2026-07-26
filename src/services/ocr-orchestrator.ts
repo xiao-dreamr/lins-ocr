@@ -211,6 +211,13 @@ export class OcrOrchestrator {
                                 '.webp$2'
                             );
                         }
+
+                        // 清理 *-origin.* 备份文件
+                        if (this.settings.cleanupOriginBackups) {
+                            const rmCmd = `rm -f '${attachWslPath}'/*-origin.*`;
+                            console.log('[LinsOCR] Cleaning up origin backups:', rmCmd);
+                            await this.wslService.execWsl(rmCmd);
+                        }
                     }
                 } catch (err) {
                     console.warn('[LinsOCR] WebP compression failed:', err);
