@@ -1,4 +1,4 @@
-import { Vault, TFile } from 'obsidian';
+import { Vault, TFile, TFolder } from 'obsidian';
 
 /**
  * 文件工具类
@@ -26,17 +26,22 @@ export class FileUtils {
     static async ensureFolder(vault: Vault, folderPath: string): Promise<void> {
         if (!folderPath) return;
 
-        // 去除首尾斜杠并分割
+        // 去除首尾斜杠、过滤空段（处理 a//b 双斜杠），再分割
         const normalized = folderPath.replace(/^\/+|\/+$/g, '');
-        const segments = normalized.split('/');
+        const segments = normalized.split('/').filter(seg => seg.length > 0);
 
         let currentPath = '';
         for (const segment of segments) {
             currentPath = currentPath ? `${currentPath}/${segment}` : segment;
             const existing = vault.getAbstractFileByPath(currentPath);
-            if (!existing) {
-                await vault.createFolder(currentPath);
+            if (existing instanceof TFolder) {
+                continue;
             }
+            if (existing) {
+                // 中间路径段被同名文件占用，直接报错比后续 createFolder 的含糊错误更清晰
+                throw new Error(`ensureFolder: "${currentPath}" 已被同名文件占用，无法创建文件夹`);
+            }
+            await vault.createFolder(currentPath);
         }
     }
 
