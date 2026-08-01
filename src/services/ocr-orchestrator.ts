@@ -181,7 +181,7 @@ export class OcrOrchestrator {
             const q = this.settings.webpQuality;
             const pyScript = this.settings.pythonScriptPath;
             console.log(`[LinsOCR] WebP check: quality=${q}, script='${pyScript}', images=${allImages.size}`);
-            if (q > 0 && pyScript && allImages.size > 0) {
+            if (q > 0 && pyScript && allImages.size > 0 && this.settings.attachmentsFolder) {
                 notice.setMessage('正在压缩图片为 WebP...');
                 try {
                     // 获取仓库在 Windows 上的绝对路径并转为 WSL 路径
@@ -223,6 +223,8 @@ export class OcrOrchestrator {
                 } catch (err) {
                     console.warn('[LinsOCR] WebP compression failed:', err);
                 }
+            } else if (q > 0 && pyScript && allImages.size > 0) {
+                console.warn('[LinsOCR] attachmentsFolder 为空，跳过 WebP 压缩（避免扫描整个 vault 根目录）');
             }
 
             if (pageMarkdowns.length === 0) {
