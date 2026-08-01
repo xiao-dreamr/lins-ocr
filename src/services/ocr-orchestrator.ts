@@ -21,6 +21,39 @@ function fixInlineMathSpaces(text: string): string {
 }
 
 /**
+ * 替换文本中的图片引用（三种格式都要覆盖）：
+ * 1) Markdown 图片语法：![alt](*imageId)
+ * 2) HTML img 标签：<img ... src="*imageId" ...>
+ * 3) 裸引用：残留的 imageId（含路径前缀如 imgs/）
+ * 使用函数式 replacer，避免 imagePath 中的 $ 等字符被当作反向引用展开。
+ */
+function replaceImageRefs(
+    text: string,
+    imageId: string,
+    imagePath: string
+): string {
+    const escapedId = imageId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    let out = text;
+
+    out = out.replace(
+        new RegExp(`!\\[([^\\]]*)\\]\\([^)]*${escapedId}\\)`, 'g'),
+        (_full: string, alt: string) => `![${alt}](${imagePath})`
+    );
+
+    out = out.replace(
+        new RegExp(`(<img[^>]*\\bsrc=")[^"]*${escapedId}(")`, 'g'),
+        (_full: string, pre: string, post: string) => `${pre}${imagePath}${post}`
+    );
+
+    out = out.replace(
+        new RegExp(`[^")\\s]*${escapedId}`, 'g'),
+        () => imagePath
+    );
+
+    return out;
+}
+
+/**
  * OCR 流程编排器
  * 协调 WSL 服务管理、API 调用、文件处理，完成完整的 OCR 工作流。
  */
@@ -103,6 +136,17 @@ export class OcrOrchestrator {
             }
             console.log('[LinsOCR] Collected', allImages.size, 'images from layout results');
 
+            // 按 imageId 去重：每个唯一图片只保存一次，各页引用同一路径，
+            // 避免多页文档为同一图片生成 _p{i}_ 前缀的重复文件
+            const imagePathMap = new Map<string, string>(); // imageId → 保存后的 vault 路径
+            const usedPaths = new Set<string>();
+            if (allImages.size > 0 && this.settings.attachmentsFolder) {
+                await FileUtils.ensureFolder(
+                    this.vault,
+                    this.settings.attachmentsFolder
+                );
+            }
+
             const pageMarkdowns: string[] = [];
 
             for (let i = 0; i < restructuredResults.length; i++) {
@@ -112,58 +156,48 @@ export class OcrOrchestrator {
 
                 let pageText = markdown.text ?? '';
 
-                // 处理图片：保存到仓库，替换引用
-                for (const [imageId, imageBase64] of allImages.entries()) {
+                // 处理图片：去重保存到仓库，替换引用
+                for (const imageId of allImages.keys()) {
+                    const cached = imagePathMap.get(imageId);
+                    if (cached) {
+                        pageText = replaceImageRefs(pageText, imageId, cached);
+                        continue;
+                    }
+
                     try {
+                        const imageBase64 = allImages.get(imageId)!;
                         // 取 basename（imageId 可能带目录前缀如 imgs/xxx.jpg）
                         const baseName = imageId.split('/').pop() ?? imageId;
-                        const safeFilename = `${file.basename}_p${i}_${baseName}`;
+                        const safeFilename = `${file.basename}_${imagePathMap.size}_${baseName}`;
                         const imagePath = this.settings.attachmentsFolder
                             ? `${this.settings.attachmentsFolder}/${safeFilename}`
                             : safeFilename;
 
-                        // 确保附件文件夹存在
-                        await FileUtils.ensureFolder(
-                            this.vault,
-                            this.settings.attachmentsFolder
-                        );
+                        // 冲突自增：重复运行/历史遗留时追加 (N) 而非静默覆盖
+                        let candidate = imagePath;
+                        let counter = 1;
+                        while (
+                            usedPaths.has(candidate) ||
+                            this.vault.getAbstractFileByPath(candidate)
+                        ) {
+                            const dot = candidate.lastIndexOf('.');
+                            const stem = dot > 0 ? candidate.slice(0, dot) : candidate;
+                            const ext = dot > 0 ? candidate.slice(dot) : '';
+                            candidate = `${stem} (${counter})${ext}`;
+                            counter++;
+                        }
 
                         // 保存图片
                         await FileUtils.saveBase64Image(
                             this.vault,
-                            imagePath,
+                            candidate,
                             imageBase64
                         );
+                        usedPaths.add(candidate);
+                        imagePathMap.set(imageId, candidate);
 
-                        // 替换文本中的图片引用（三种格式都要覆盖）
-                        const escapedId = imageId.replace(
-                            /[.*+?^${}()|[\]\\]/g,
-                            '\\$&'
-                        );
-
-                        // 1) Markdown 图片语法：![alt](*imageId)
-                        pageText = pageText.replace(
-                            new RegExp(
-                                `!\\[([^\\]]*)\\]\\([^)]*${escapedId}\\)`,
-                                'g'
-                            ),
-                            `![$1](${imagePath})`
-                        );
-
-                        // 2) HTML img 标签：<img ... src="*imageId" ...>
-                        pageText = pageText.replace(
-                            new RegExp(
-                                `(<img[^>]*\\bsrc=")[^"]*${escapedId}(")`,
-                                'g'
-                            ),
-                            `$1${imagePath}$2`
-                        );
-
-                        // 3) 裸引用：残留的 imageId（含路径前缀如 imgs/）
-                        pageText = pageText.replace(
-                            new RegExp(`[^")\\s]*${escapedId}`, 'g'),
-                            imagePath
-                        );
+                        // 替换文本中的图片引用
+                        pageText = replaceImageRefs(pageText, imageId, candidate);
                     } catch (imgErr) {
                         console.warn(
                             `[LinsOCR] Failed to save image ${imageId}:`,
