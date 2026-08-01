@@ -40,7 +40,8 @@ export class WslServiceManager {
             }
             const data = response.json;
             return data?.errorCode === 0;
-        } catch {
+        } catch (err) {
+            console.debug('[LinsOCR] checkHealth 请求失败:', err);
             return false;
         }
     }
