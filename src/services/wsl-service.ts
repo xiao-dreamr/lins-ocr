@@ -97,6 +97,11 @@ export class WslServiceManager {
             child.on('close', (code) => {
                 console.log('[LinsOCR] service process exited with code:', code);
                 this.serviceProcess = null;
+                // 非零退出说明启动失败（如 conda 路径错误、命令拼错），
+                // 立即判定失败，避免 sleep 兜底 resolve(true) 后空等 120s
+                if (code !== 0) {
+                    resolve(false);
+                }
             });
 
             this.serviceProcess = child;
