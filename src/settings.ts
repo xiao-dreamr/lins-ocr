@@ -20,6 +20,7 @@ export interface LinsOCRSettings {
     // 行为配置
     idleTimeout: number;
     maxImageDimension: number;
+    requestTimeoutMs: number;
 
     // WebP 压缩
     webpQuality: number;
@@ -39,6 +40,7 @@ export const DEFAULT_SETTINGS: LinsOCRSettings = {
     attachmentsFolder: 'attachments',
     idleTimeout: 120,
     maxImageDimension: 1280,
+    requestTimeoutMs: 600000,
     webpQuality: 85,
     pythonScriptPath: '',
     cleanupOriginBackups: false,
@@ -214,6 +216,20 @@ export class LinsOCRSettingTab extends PluginSettingTab {
                     const dim = parseInt(value, 10);
                     if (!isNaN(dim) && dim > 0) {
                         this.plugin.settings.maxImageDimension = dim;
+                        await this.plugin.saveSettings();
+                    }
+                }));
+
+        new Setting(containerEl)
+            .setName('请求超时（毫秒）')
+            .setDesc('OCR HTTP 请求超时时间，设为 0 表示不超时。服务推理可能较慢，建议保留较大值（如 600000）')
+            .addText(text => text
+                .setPlaceholder('600000')
+                .setValue(String(this.plugin.settings.requestTimeoutMs))
+                .onChange(async (value) => {
+                    const ms = parseInt(value, 10);
+                    if (!isNaN(ms) && ms >= 0) {
+                        this.plugin.settings.requestTimeoutMs = ms;
                         await this.plugin.saveSettings();
                     }
                 }));

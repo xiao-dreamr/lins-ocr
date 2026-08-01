@@ -5,6 +5,34 @@ import type { LayoutParsingResult } from '../types';
 import { ImageUtils } from '../utils/image-utils';
 
 /**
+ * 给 Promise 加超时（Obsidian requestUrl 无 timeout 参数，需自行实现）。
+ * @param ms — 超时毫秒数，<=0 表示不超时
+ */
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+    if (!ms || ms <= 0) {
+        return promise;
+    }
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(
+            () => reject(new Error(`${label} 请求超时（${ms / 1000}s）`)),
+            ms
+        );
+    });
+    // 无论结果如何都清理定时器
+    return Promise.race([promise, timeout]).then(
+        (value) => {
+            if (timer) clearTimeout(timer);
+            return value;
+        },
+        (err) => {
+            if (timer) clearTimeout(timer);
+            throw err;
+        }
+    );
+}
+
+/**
  * OCR API 调用服务
  * 封装对 PaddleOCR-VL 的 /layout-parsing 和 /restructure-pages 端点的 HTTP 调用。
  */
@@ -37,13 +65,17 @@ export class OcrApiService {
 
         console.log('[LinsOCR] Calling /layout-parsing...');
 
-        const response = await requestUrl({
-            url: this.settings.layoutParsingUrl,
-            method: 'POST',
-            contentType: 'application/json',
-            body: JSON.stringify(payload),
-            throw: false,
-        });
+        const response = await withTimeout(
+            requestUrl({
+                url: this.settings.layoutParsingUrl,
+                method: 'POST',
+                contentType: 'application/json',
+                body: JSON.stringify(payload),
+                throw: false,
+            }),
+            this.settings.requestTimeoutMs,
+            'layout-parsing'
+        );
 
         if (response.status !== 200) {
             const errorBody = (response.json as Record<string, unknown> | undefined);
@@ -92,13 +124,17 @@ export class OcrApiService {
 
         console.log('[LinsOCR] Calling /restructure-pages...');
 
-        const response = await requestUrl({
-            url: this.settings.restructurePagesUrl,
-            method: 'POST',
-            contentType: 'application/json',
-            body: JSON.stringify(payload),
-            throw: false,
-        });
+        const response = await withTimeout(
+            requestUrl({
+                url: this.settings.restructurePagesUrl,
+                method: 'POST',
+                contentType: 'application/json',
+                body: JSON.stringify(payload),
+                throw: false,
+            }),
+            this.settings.requestTimeoutMs,
+            'restructure-pages'
+        );
 
         if (response.status !== 200) {
             const errorBody = (response.json as Record<string, unknown> | undefined);
