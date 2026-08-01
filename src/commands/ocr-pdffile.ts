@@ -16,7 +16,7 @@ export function ocrPdfFileCommand(plugin: LinsOCRPlugin): void {
 
     // 1. 当前打开的就是 PDF 文件
     if (activeFile && SUPPORTED_PDF_EXTENSIONS.includes(activeFile.extension.toLowerCase())) {
-        plugin.ocrOrchestrator.processFile(activeFile, FileType.PDF);
+        plugin.ocrOrchestrator.processFile(activeFile, FileType.PDF).catch(console.error);
         return;
     }
 
@@ -30,7 +30,7 @@ export function ocrPdfFileCommand(plugin: LinsOCRPlugin): void {
             SUPPORTED_PDF_EXTENSIONS
         );
         if (embedded) {
-            plugin.ocrOrchestrator.processFile(embedded, FileType.PDF);
+            plugin.ocrOrchestrator.processFile(embedded, FileType.PDF).catch(console.error);
             return;
         }
     }
@@ -40,7 +40,7 @@ export function ocrPdfFileCommand(plugin: LinsOCRPlugin): void {
         plugin.app,
         SUPPORTED_PDF_EXTENSIONS,
         (file) => {
-            plugin.ocrOrchestrator.processFile(file, FileType.PDF);
+            plugin.ocrOrchestrator.processFile(file, FileType.PDF).catch(console.error);
         }
     ).open();
 }

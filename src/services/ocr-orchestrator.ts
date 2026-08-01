@@ -62,6 +62,7 @@ export class OcrOrchestrator {
     private settings: LinsOCRSettings;
     private wslService: WslServiceManager;
     private ocrApi: OcrApiService;
+    private isProcessing = false;
 
     constructor(
         vault: Vault,
@@ -79,6 +80,14 @@ export class OcrOrchestrator {
      * 处理单个文件（图片或 PDF）的完整 OCR 流程
      */
     async processFile(file: TFile, fileType: FileType): Promise<void> {
+        // 互斥保护：并发 OCR 会导致 scheduleShutdown 定时器竞争（一个流程
+        // 的 120s 空闲关闭会杀掉仍在推理的另一个流程）和重复写文件
+        if (this.isProcessing) {
+            new Notice('⚠️ OCR 正在处理中，请稍候再试');
+            return;
+        }
+        this.isProcessing = true;
+
         let notice = new Notice('正在启动 OCR 服务...', 0);
 
         try {
@@ -306,6 +315,8 @@ export class OcrOrchestrator {
 
             // 仍然调度关闭，防止服务因错误一直运行
             this.wslService.scheduleShutdown();
+        } finally {
+            this.isProcessing = false;
         }
     }
 }

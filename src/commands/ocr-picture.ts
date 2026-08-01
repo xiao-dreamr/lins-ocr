@@ -16,7 +16,7 @@ export function ocrPictureCommand(plugin: LinsOCRPlugin): void {
 
     // 1. 当前打开的就是图片文件
     if (activeFile && SUPPORTED_IMAGE_EXTENSIONS.includes(activeFile.extension.toLowerCase())) {
-        plugin.ocrOrchestrator.processFile(activeFile, FileType.IMAGE);
+        plugin.ocrOrchestrator.processFile(activeFile, FileType.IMAGE).catch(console.error);
         return;
     }
 
@@ -30,7 +30,7 @@ export function ocrPictureCommand(plugin: LinsOCRPlugin): void {
             SUPPORTED_IMAGE_EXTENSIONS
         );
         if (embedded) {
-            plugin.ocrOrchestrator.processFile(embedded, FileType.IMAGE);
+            plugin.ocrOrchestrator.processFile(embedded, FileType.IMAGE).catch(console.error);
             return;
         }
     }
@@ -40,7 +40,7 @@ export function ocrPictureCommand(plugin: LinsOCRPlugin): void {
         plugin.app,
         SUPPORTED_IMAGE_EXTENSIONS,
         (file) => {
-            plugin.ocrOrchestrator.processFile(file, FileType.IMAGE);
+            plugin.ocrOrchestrator.processFile(file, FileType.IMAGE).catch(console.error);
         }
     ).open();
 }
