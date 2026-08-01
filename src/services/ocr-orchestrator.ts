@@ -239,12 +239,17 @@ export class OcrOrchestrator {
                         const out = await this.wslService.execWsl(cmd);
                         console.log('[LinsOCR] WebP compression output:', out);
 
-                        // 替换 markdown 中的图片扩展名为 .webp
-                        for (let i = 0; i < pageMarkdowns.length; i++) {
-                            pageMarkdowns[i] = pageMarkdowns[i].replace(
-                                /\.(jpg|jpeg|png|bmp|tiff|tif)(\b|["')}\s>])/gi,
-                                '.webp$2'
+                        // 只替换本次实际保存的图片路径的扩展名为 .webp
+                        // 用字面量替换而非全文正则，避免误改 OCR 正文中的 URL/代码/说明文字
+                        for (const savedPath of imagePathMap.values()) {
+                            const webpPath = savedPath.replace(
+                                /\.(jpg|jpeg|png|bmp|tiff|tif)$/i,
+                                '.webp'
                             );
+                            if (webpPath === savedPath) continue; // 无扩展名或已是 webp
+                            for (let i = 0; i < pageMarkdowns.length; i++) {
+                                pageMarkdowns[i] = pageMarkdowns[i].split(savedPath).join(webpPath);
+                            }
                         }
 
                         // 清理 *-origin.* 备份文件
