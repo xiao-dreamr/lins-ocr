@@ -11,10 +11,13 @@ export class FileUtils {
     static async readFileAsBase64(vault: Vault, file: TFile): Promise<string> {
         const buffer = await vault.readBinary(file);
         const bytes = new Uint8Array(buffer);
-        let binary = '';
-        for (let i = 0; i < bytes.length; i++) {
-            binary += String.fromCharCode(bytes[i]);
+        // 分块转换，避免逐字节字符串拼接的 O(n²)（大 PDF 时性能显著提升）
+        const CHUNK_SIZE = 0x8000; // 32768，低于 V8 参数展开上限
+        const chunks: string[] = [];
+        for (let i = 0; i < bytes.length; i += CHUNK_SIZE) {
+            chunks.push(String.fromCharCode(...bytes.subarray(i, i + CHUNK_SIZE)));
         }
+        const binary = chunks.join('');
         const base64 = btoa(binary);
         const mime = FileUtils.getMimeType(file.extension);
         return `data:${mime};base64,${base64}`;
