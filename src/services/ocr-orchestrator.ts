@@ -5,6 +5,7 @@ import { WslServiceManager } from './wsl-service';
 import { OcrApiService } from './ocr-api';
 import { ImageUtils } from '../utils/image-utils';
 import { FileUtils } from '../utils/file-utils';
+import { shellQuote } from '../utils/shell';
 
 /**
  * 修整 PaddleOCR-VL 输出中的行内数学公式空格
@@ -199,7 +200,7 @@ export class OcrOrchestrator {
                             ? `${wslBase}/${this.settings.attachmentsFolder}`
                             : wslBase;
 
-                        const cmd = `python3 '${pyScript}' '${attachWslPath}' -q ${q}`;
+                        const cmd = `python3 ${shellQuote(pyScript)} ${shellQuote(attachWslPath)} -q ${q}`;
                         console.log('[LinsOCR] Running webp compression:', cmd);
                         const out = await this.wslService.execWsl(cmd);
                         console.log('[LinsOCR] WebP compression output:', out);
@@ -214,7 +215,7 @@ export class OcrOrchestrator {
 
                         // 清理 *-origin.* 备份文件
                         if (this.settings.cleanupOriginBackups) {
-                            const rmCmd = `rm -f '${attachWslPath}'/*-origin.*`;
+                            const rmCmd = `rm -f ${shellQuote(attachWslPath)}/*-origin.*`;
                             console.log('[LinsOCR] Cleaning up origin backups:', rmCmd);
                             await this.wslService.execWsl(rmCmd);
                         }

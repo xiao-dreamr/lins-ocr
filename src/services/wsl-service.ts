@@ -1,6 +1,7 @@
 import { spawn, ChildProcess } from 'child_process';
 import { requestUrl } from 'obsidian';
 import type { LinsOCRSettings } from '../settings';
+import { shellQuote } from '../utils/shell';
 
 /**
  * WSL 服务生命周期管理器
@@ -66,9 +67,9 @@ export class WslServiceManager {
             // wsl.exe 进程存活 = WSL2 VM 存活 = paddlex 存活
             const innerCmd =
                 `echo "=== LinsOCR service start $(date) ===" > ${logFile} && ` +
-                `source ${condaRoot}/etc/profile.d/conda.sh && ` +
-                `conda activate ${envName} && ` +
-                `env FLAGS_allocator_strategy=naive_best_fit paddlex --pipeline ${this.settings.pipelineName} --serve --port ${port} >> ${logFile} 2>&1`;
+                `source ${shellQuote(condaRoot)}/etc/profile.d/conda.sh && ` +
+                `conda activate ${shellQuote(envName)} && ` +
+                `env FLAGS_allocator_strategy=naive_best_fit paddlex --pipeline ${shellQuote(this.settings.pipelineName)} --serve --port ${port} >> ${logFile} 2>&1`;
 
             console.log('[LinsOCR] Starting WSL service (foreground mode)...');
             console.log('[LinsOCR] innerCmd:', innerCmd);
